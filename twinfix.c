@@ -22,6 +22,7 @@ static dispatch_queue_t output_queue;
 static IOHIDDeviceRef output_device;
 static int haptic_started;
 static uint8_t last_strong[2], last_weak[2];
+static unsigned vibration_log_count[2];
 static void write_motor(int player, uint8_t strong, uint8_t weak) {
  if (!output_device || player < 0 || player > 1) return;
  uint8_t bytes[]={(uint8_t)(player+1),0,0,strong,weak};
@@ -47,7 +48,7 @@ static void haptic_sink(haptic_state s) {
   if(strong==last_strong[p] && weak==last_weak[p]) return;
   last_strong[p]=strong; last_weak[p]=weak;
   write_motor(p,strong,weak);
-  if(strong || weak) fprintf(stderr,"[twinfix] vibration player %d: %u %u\n",p+1,strong,weak);
+  if((strong || weak) && vibration_log_count[p]++ < 5) fprintf(stderr,"[twinfix] vibration player %d: %u %u\n",p+1,strong,weak);
  });
 }
 static void haptic_start(void) {

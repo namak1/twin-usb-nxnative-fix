@@ -34,9 +34,12 @@ static void shutdown_output(void) {
  dispatch_sync(output_queue, ^{ if(output_device){write_motor(0,0,0);write_motor(1,0,0);} });
 }
 static uint8_t magnitude(float x) {
- if(!isfinite(x) || x<=0.01f) return 0;
+ // Small Switch amplitudes do not reliably start the adapter's physical motors.
+ // Apply a dead zone and a minimum level, then quantize to limit USB traffic.
+ if(!isfinite(x) || x<=0.04f) return 0;
  if(x>1) x=1;
- return (uint8_t)(x*127.f);
+ int level=64+(int)(x*63.f);
+ return (uint8_t)(level >= 120 ? 127 : (level/8)*8);
 }
 // Called under nxnative's haptic lock: enqueue the snapshot, never re-enter the host.
 static void haptic_sink(haptic_state s) {
@@ -63,7 +66,8 @@ static void report(void *ctx,IOReturn result,void *sender,IOHIDReportType type,u
  (void)ctx;(void)sender;(void)type;
  if(result || id!=2 || n<8 || b[0]!=2 || !setpad || !players) return;
  unsigned bits=(b[5]>>4)|((unsigned)b[6]<<4); uint64_t m=0;
- const int map[12]={3,1,0,2,6,7,8,9,11,10,4,5};
+ // Match the native macOS layout for this Twin USB controller, by physical button.
+ const int map[12]={2,0,1,3,8,9,6,7,11,10,4,5};
  for(int i=0;i<12;i++) if(bits&(1u<<i)) m|=1ull<<map[i];
  int h=b[5]&15; if(h==7||h<=1)m|=1ull<<13; if(h>=1&&h<=3)m|=1ull<<14; if(h>=3&&h<=5)m|=1ull<<15; if(h>=5&&h<=7)m|=1ull<<12;
  players(3); setpad(1,m,axis(b[3]),-axis(b[4]),axis(b[1]),-axis(b[2]));

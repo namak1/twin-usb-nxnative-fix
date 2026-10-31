@@ -10,6 +10,8 @@ This is an experimental, game-specific workaround, not an official nxnative feat
 
 On the tested Macher MR-58 setup, each of the two vibration channels was activated separately on each controller. The tester felt both channels on both controllers. On Player 1, channel 1 felt stronger than channel 2; physical motor size and location were not verified. The bridge maps the game’s low-frequency amplitude to channel 1 and high-frequency amplitude to channel 2, taking the maximum across the game’s two motor values and applying a dead zone and minimum drive level. This is an approximation, not a verified reproduction of Switch HD rumble. After the strength adjustment, the tester reported that in-game vibration and button 3 acceleration worked for both players. Other effects and button mappings have not all been verified.
 
+Short vibration pulses are held for at least 150 milliseconds so the motors have time to spin up. After this change, the tester confirmed that both vibration channels could be felt during a race. This extends short effects and is still an approximation of the original game feedback.
+
 ## Build and install
 
 Requires Xcode or Apple Command Line Tools, an existing nxnative Mac app, and Terminal. These steps affect only the specified game's nxnative settings. They do not provide a game, keys, or game data.

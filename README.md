@@ -4,7 +4,7 @@ Some two-port “Twin USB Gamepad” adapters (USB vendor `0810`, product `0001`
 
 Tested on an Apple silicon Mac running macOS 27.0 with a particular nxnative build of Crash Team Racing Nitro-Fueled. Two-player split-screen and both controllers worked in that setup. Other games, adapters, controller layouts, macOS releases, and nxnative builds have not been verified. USB IDs are shared by different devices, so an identically identified adapter may use a different report layout.
 
-This is an experimental, game-specific workaround, not an official nxnative feature. It loads a locally compiled dynamic library into the game host and depends on internal `dm_pad_players` and `dm_pad_set_player` symbols; an update can break it. The code assumes this adapter has report IDs 1 and 2 and maps the second report's first 12 buttons in a typical PlayStation-style layout. Button and stick mappings may vary. It reserves Player 2 and repeatedly sets the connected-player mask to Players 1 and 2, so it is not suitable for setups with more than two controllers. No rumble support is added for the second controller.
+This is an experimental, game-specific workaround, not an official nxnative feature. It loads a locally compiled dynamic library into the game host and depends on internal `dm_pad_players` and `dm_pad_set_player` symbols; an update can break it. The code assumes this adapter has report IDs 1 and 2 and maps the second report's first 12 buttons in a typical PlayStation-style layout. Button and stick mappings may vary. It reserves Player 2 and repeatedly sets the connected-player mask to Players 1 and 2, so it is not suitable for setups with more than two controllers. The bridge also takes over the host vibration sink and sends approximate low/high motor values to both ports. It replaces the host’s normal vibration routing while the adapter is connected and is intended only for this two-controller setup. Hardware motor commands were confirmed on both controllers; game-triggered vibration is experimental and needs further testing.
 
 ## Build and install
 
@@ -29,7 +29,7 @@ DYLD_INSERT_LIBRARIES=/Users/YOUR_USER/Library/Application Support/nxnative/0100
 
 Preserve any existing lines. If `DYLD_INSERT_LIBRARIES` is already set, do not add a second line: this workaround may conflict with the existing library and needs manual integration. This setting applies when the nxnative launcher reads the game's `env.txt`; other launchers or hardened/signed builds may ignore or reject it.
 
-5. Start the game, choose Local Arcade and two players, and test both controllers. The game log is normally at `~/Library/Logs/nxnative/<GAME_ID>.log`. Lines beginning `[twinfix]` show whether the input manager started and report 2 was received.
+5. Start the game, choose Local Arcade and two players, and test both controllers. The game log is normally at `~/Library/Logs/nxnative/<GAME_ID>.log`. Lines beginning `[twinfix]` show whether the input manager started, report 2 was received, and vibration routing was enabled. The game’s rumble option must be enabled. `DM_RUMBLE=0` disables the bridge’s vibration support.
 
 ## Remove
 
@@ -37,4 +37,4 @@ Quit the game, remove only the `DYLD_INSERT_LIBRARIES` line that points to `twin
 
 ## How it works
 
-The macOS HID manager opens the adapter without exclusive access. The library filters for vendor `0810`, product `0001` and report ID 2, translates its button, hat and axis values, marks the second player connected, and passes its input to the nxnative host. The original app continues to handle Player 1. This does not modify the game executable or game assets.
+The macOS HID manager opens the adapter without exclusive access. The library filters for vendor `0810`, product `0001` and report ID 2, translates its button, hat and axis values, marks the second player connected, and passes its input to the nxnative host. The original app continues to handle Player 1. It also uses the host haptic sink to translate game vibration amplitudes into the adapter’s output reports. This depends on nxnative internals and may not work in other builds. This does not modify the game executable or game assets.

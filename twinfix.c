@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <math.h>
+#include <time.h>
 static void (*setpad)(int,uint64_t,int32_t,int32_t,int32_t,int32_t);
 static void (*players)(uint32_t);
 static IOHIDManagerRef manager;
@@ -22,6 +23,8 @@ static dispatch_queue_t output_queue;
 static IOHIDDeviceRef output_device;
 static int haptic_started;
 static uint8_t last_strong[2], last_weak[2];
+static uint8_t wanted[2][2];
+static uint64_t until_ns[2][2], output_generation[2];
 static unsigned vibration_log_count[2];
 static void write_motor(int player, uint8_t strong, uint8_t weak) {
  if (!output_device || player < 0 || player > 1) return;
@@ -41,6 +44,36 @@ static uint8_t magnitude(float x) {
  int level=64+(int)(x*63.f);
  return (uint8_t)(level >= 120 ? 127 : (level/8)*8);
 }
+static uint64_t monotonic_ns(void) {
+ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+ return (uint64_t)t.tv_sec*1000000000ull + (uint64_t)t.tv_nsec;
+}
+// output_queue only. Preserve short pulses long enough for mechanical motors to spin up.
+static void apply_wanted(int p) {
+ if(!output_device) return;
+ uint64_t now=monotonic_ns(), next=0;
+ uint8_t active[2];
+ for(int i=0;i<2;i++) {
+  uint8_t prev=i==0 ? last_strong[p] : last_weak[p];
+  active[i]=wanted[p][i];
+  if(!active[i] && prev && now<until_ns[p][i]) {
+   active[i]=prev;
+   if(!next || until_ns[p][i]<next) next=until_ns[p][i];
+  }
+ }
+ if(active[0]!=last_strong[p] || active[1]!=last_weak[p]) {
+  last_strong[p]=active[0]; last_weak[p]=active[1];
+  write_motor(p,active[0],active[1]);
+  if((active[0] || active[1]) && vibration_log_count[p]++ < 5)
+   fprintf(stderr,"[twinfix] vibration player %d: %u %u\n",p+1,active[0],active[1]);
+ }
+ if(next) {
+  uint64_t generation=++output_generation[p];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(next-now)),output_queue, ^{
+   if(output_generation[p]==generation) apply_wanted(p);
+  });
+ }
+}
 // Called under nxnative's haptic lock: enqueue the snapshot, never re-enter the host.
 static void haptic_sink(haptic_state s) {
  if(s.player<0 || s.player>1) return;
@@ -48,10 +81,12 @@ static void haptic_sink(haptic_state s) {
  float hi=fmaxf(s.motor[0].amplitude_high,s.motor[1].amplitude_high);
  uint8_t strong=magnitude(lo), weak=magnitude(hi); int p=s.player;
  dispatch_async(output_queue, ^{
-  if(strong==last_strong[p] && weak==last_weak[p]) return;
-  last_strong[p]=strong; last_weak[p]=weak;
-  write_motor(p,strong,weak);
-  if((strong || weak) && vibration_log_count[p]++ < 5) fprintf(stderr,"[twinfix] vibration player %d: %u %u\n",p+1,strong,weak);
+  uint64_t now=monotonic_ns();
+  wanted[p][0]=strong; wanted[p][1]=weak;
+  if(strong) until_ns[p][0]=now+150000000ull;
+  if(weak) until_ns[p][1]=now+150000000ull;
+  ++output_generation[p];
+  apply_wanted(p);
  });
 }
 static void haptic_start(void) {
@@ -74,7 +109,7 @@ static void report(void *ctx,IOReturn result,void *sender,IOHIDReportType type,u
  static int once; if(!once++){fprintf(stderr,"[twinfix] receiving second controller, Player 2 enabled\n");}
 }
 static void found(void *c,IOReturn r,void *s,IOHIDDeviceRef d) { (void)c;(void)r;(void)s; connected=1; fprintf(stderr,"[twinfix] twin adapter connected\n"); IOHIDDeviceRegisterInputReportCallback(d,input,sizeof input,report,NULL);
- CFRetain(d); dispatch_async(output_queue, ^{ if(output_device) CFRelease(output_device); output_device=d; memset(last_strong,0,sizeof last_strong); memset(last_weak,0,sizeof last_weak); });
+ CFRetain(d); dispatch_async(output_queue, ^{ if(output_device) CFRelease(output_device); output_device=d; memset(last_strong,0,sizeof last_strong); memset(last_weak,0,sizeof last_weak); memset(wanted,0,sizeof wanted); memset(until_ns,0,sizeof until_ns); ++output_generation[0]; ++output_generation[1]; });
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),dispatch_get_main_queue(), ^{ haptic_start(); });
 }
 static void removed(void *c,IOReturn r,void *s,IOHIDDeviceRef d) { (void)c;(void)r;(void)s;(void)d; if(connected){connected=0; setpad(1,0,0,0,0,0); players(1); if(haptic_started){ haptic_route(0,0); haptic_route(1,0); haptic_started=0; } dispatch_async(output_queue, ^{ if(output_device){write_motor(0,0,0);write_motor(1,0,0);CFRelease(output_device);output_device=NULL;} }); fprintf(stderr,"[twinfix] twin adapter disconnected\n");} }

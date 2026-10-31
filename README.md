@@ -6,6 +6,10 @@ Tested on an Apple silicon Mac running macOS 27.0 with a particular nxnative bui
 
 This is an experimental, game-specific workaround, not an official nxnative feature. It loads a locally compiled dynamic library into the game host and depends on internal `dm_pad_players` and `dm_pad_set_player` symbols; an update can break it. The code assumes this adapter has report IDs 1 and 2 and maps the second report's buttons to approximate the native layout observed with a Macher MR-58 controller; not every button mapping has been verified. Button and stick mappings may vary. It reserves Player 2 and repeatedly sets the connected-player mask to Players 1 and 2, so it is not suitable for setups with more than two controllers. The bridge also takes over the host vibration sink and sends approximate low/high motor values to both ports. It replaces the host’s normal vibration routing while the adapter is connected and is intended only for this two-controller setup. Hardware motor commands were confirmed on both controllers and game vibration events were observed for both players. In-game vibration and the adjusted motor strength remain experimental.
 
+## Vibration test
+
+On the tested Macher MR-58 setup, each of the two vibration channels was activated separately on each controller. The tester felt both channels on both controllers. On Player 1, channel 1 felt stronger than channel 2; physical motor size and location were not verified. The bridge maps the game’s low-frequency amplitude to channel 1 and high-frequency amplitude to channel 2, taking the maximum across the game’s two motor values and applying a dead zone and minimum drive level. This is an approximation, not a verified reproduction of Switch HD rumble. After the strength adjustment, the tester reported that in-game vibration and button 3 acceleration worked for both players. Other effects and button mappings have not all been verified.
+
 ## Build and install
 
 Requires Xcode or Apple Command Line Tools, an existing nxnative Mac app, and Terminal. These steps affect only the specified game's nxnative settings. They do not provide a game, keys, or game data.

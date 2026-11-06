@@ -14,6 +14,17 @@ static void (*players)(uint32_t);
 static IOHIDManagerRef manager;
 static uint8_t input[64];
 static int connected;
+#include "mapping.h"
+extern void tf_start_player1(const int map[12]);
+static int button_maps[2][12];
+static void load_button_map(void) {
+ memcpy(button_maps[0],tf_default,sizeof tf_default);memcpy(button_maps[1],tf_default,sizeof tf_default);
+ const char *home=getenv("HOME");if(!home)return;char path[2048];
+ snprintf(path,sizeof path,"%s/Library/Application Support/nxnative/0100F9F00C696000/controller-mappings.txt",home);
+ if(tf_read_map(path,&button_maps[0][0],24))fprintf(stderr,"[twinfix] loaded independent mappings for both players\n");
+ else {snprintf(path,sizeof path,"%s/Library/Application Support/nxnative/0100F9F00C696000/player2-buttons.txt",home);tf_read_map(path,button_maps[1],12);}
+}
+
 typedef struct { float amplitude_low, frequency_low, amplitude_high, frequency_high; } vibration;
 typedef struct { int player; uint64_t epoch; vibration motor[2]; } haptic_state;
 static void (*haptic_init)(void (*)(haptic_state), int);
@@ -102,8 +113,7 @@ static void report(void *ctx,IOReturn result,void *sender,IOHIDReportType type,u
  if(result || id!=2 || n<8 || b[0]!=2 || !setpad || !players) return;
  unsigned bits=(b[5]>>4)|((unsigned)b[6]<<4); uint64_t m=0;
  // Match the native macOS layout for this Twin USB controller, by physical button.
- const int map[12]={2,0,1,3,8,9,6,7,11,10,4,5};
- for(int i=0;i<12;i++) if(bits&(1u<<i)) m|=1ull<<map[i];
+ m=tf_buttons(bits,button_maps[1]);
  int h=b[5]&15; if(h==7||h<=1)m|=1ull<<13; if(h>=1&&h<=3)m|=1ull<<14; if(h>=3&&h<=5)m|=1ull<<15; if(h>=5&&h<=7)m|=1ull<<12;
  players(3); setpad(1,m,axis(b[3]),-axis(b[4]),axis(b[1]),-axis(b[2]));
  static int once; if(!once++){fprintf(stderr,"[twinfix] receiving second controller, Player 2 enabled\n");}
@@ -113,9 +123,12 @@ static void found(void *c,IOReturn r,void *s,IOHIDDeviceRef d) { (void)c;(void)r
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),dispatch_get_main_queue(), ^{ haptic_start(); });
 }
 static void removed(void *c,IOReturn r,void *s,IOHIDDeviceRef d) { (void)c;(void)r;(void)s;(void)d; if(connected){connected=0; setpad(1,0,0,0,0,0); players(1); if(haptic_started){ haptic_route(0,0); haptic_route(1,0); haptic_started=0; } dispatch_async(output_queue, ^{ if(output_device){write_motor(0,0,0);write_motor(1,0,0);CFRelease(output_device);output_device=NULL;} }); fprintf(stderr,"[twinfix] twin adapter disconnected\n");} }
+#ifndef TF_TEST
 __attribute__((constructor)) static void init(void) {
+ load_button_map();
  setpad=dlsym(RTLD_DEFAULT,"dm_pad_set_player"); players=dlsym(RTLD_DEFAULT,"dm_pad_players");
  if(!setpad||!players){fprintf(stderr,"[twinfix] input interface unavailable\n");return;}
+ tf_start_player1(button_maps[0]);
  haptic_init=dlsym(RTLD_DEFAULT,"dm_haptics_init"); haptic_route=dlsym(RTLD_DEFAULT,"dm_haptics_route"); haptic_available=dlsym(RTLD_DEFAULT,"dm_haptics_available");
  output_queue=dispatch_queue_create("twinfix.output",DISPATCH_QUEUE_SERIAL);
  atexit(shutdown_output);
@@ -134,3 +147,5 @@ __attribute__((constructor)) static void init(void) {
  dispatch_resume(timer);
  });
 }
+
+#endif

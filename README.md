@@ -6,6 +6,18 @@ This project maps both halves of a Twin USB Gamepad adapter (`0810:0001`) as two
 
 The repository contains source code and build scripts. It does **not** contain the game, game assets, keys, firmware, a prebuilt app, or the OpenJoystickDriver helper.
 
+## Screenshots
+
+Player 1 mapping panel:
+
+![Twin Controller Studio showing the Player 1 mapping panel](screenshots/player-1.jpg)
+
+Player 2 waiting for a physical button to assign to the left trigger:
+
+![Twin Controller Studio showing Player 2 in button assignment mode](screenshots/player-2.jpg)
+
+The screenshots show the tested default bindings. They can be regenerated from the UI source with `studio/render-screenshots.m`; no controller input is simulated.
+
 ## Build the controller editor
 
 Install Apple Command Line Tools, then run from this repository:
